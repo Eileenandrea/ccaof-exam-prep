@@ -14,17 +14,18 @@ Phased implementation plan derived from `CLAUDE.md` (spec) and `architecture.md`
 - Inserted via `server/db/seed.ts` (`npm run seed`) — every question has domain tag, item type, options, correct answer(s), and explanation.
 - Verified: `GET /api/questions/stats` shows 85 total with non-trivial counts in every domain (8-18 each), correctly reporting `pctOfTarget` against the 1,000-question long-term target.
 
-## Phase 2 — Exam flow (core loop)
-- `POST /exams`: domain-weighted selection of 60 questions, shuffle order/options, create attempt + attempt_items.
-- `ExamPage`: question navigation, single/multi-select answering, flag-for-review, 120-minute timer with 10-min/2-min warnings, summary screen before submit.
-- Autosave answers via `PATCH /exams/:id/items/:questionId` as the user progresses; support resuming an in-progress attempt on reload.
-- `POST /exams/:id/submit`: compute raw score, scaled score (linear approximation), pass/fail, per-domain breakdown.
-- **Done when**: you can take a full 60-question exam start to finish, refresh mid-exam without losing progress, and get a score at the end.
+## Phase 2 — Exam flow (core loop) ✅ DONE
+- `POST /api/exams`: domain-weighted selection (`server/examSelection.ts`), deterministic per-attempt option shuffling (seeded, no extra schema needed), creates attempt + attempt_items.
+- `GET /api/exams/:id`, `PATCH /api/exams/:id/items/:questionId` (autosave), `POST /api/exams/:id/submit` (raw + scaled score via `server/scoring.ts`, per-domain breakdown) — all built in `server/routes/exams.ts`.
+- `ExamPage`: 60-question nav grid (answered/flagged indicators), single/multi-select `QuestionCard`, flag-for-review, live `Timer` computed from server `startedAt` (survives refresh), 10-min/2-min warning banners, auto-submit at 0, summary screen before final submit.
+- Minimal `ResultsPage` (headline scaled score, pass/fail, raw score) — full breakdown/review lands in Phase 3.
+- Client scaffold rebuilt (Vite config, tsconfig, index.html, main.tsx, index.css, App.tsx w/ router) after the original `npm create vite` output went missing from disk. Also fixed two environment issues: `client/package.json` was missing its `scripts` block, and Vite 8 (rolldown-based, needs Node ≥20.19) failed to load its native binding on this machine's Node 20.17 — pinned `vite` to `^5.4.11` / `@vitejs/plugin-react` to `^4.3.4` and reinstalled clean, which resolved it.
+- **Verified live in a headless browser (Playwright)**: home → start exam → answer + flag Q1 → Next → answer Q2 → Previous → jump via nav grid → Review & Submit summary → Submit → results page showing scaled score/pass-fail, zero console errors. Also verified **mid-exam refresh**: reloaded the exam URL after answering + flagging a question and confirmed both the answer and flag persisted (server-backed resume works).
 
-## Phase 3 — Results / end-of-exam analysis
-- `ResultsPage`: headline (scaled score, pass/fail, raw score), per-domain accuracy with weak/borderline/strong flags, item-by-item review (question, your answer, correct answer, explanation), default to wrong-answers-only with a toggle for all.
-- "What to study next": auto-generated from the 2–3 weakest domains using the task-statement text already in `CLAUDE.md`.
-- **Done when**: after submitting, you land on a results page that answers "what did I get wrong and why" without extra clicks.
+## Phase 3 — Results / end-of-exam analysis ✅ DONE
+- `buildResultsView` (server/routes/exams.ts) now returns `domainBreakdown` as an array sorted weakest-to-strongest with `pct` and a `weak`/`borderline`/`strong` `level` (via `accuracyLevel()` in `server/scoring.ts`), plus a `studyNext` list (2-3 weakest domains, weak preferred over borderline, each with a pointer built from that domain's `taskStatements` in `domainWeights.ts` — no duplicated blueprint text).
+- `ResultsPage` fully built out: headline, per-domain accuracy bars (red/amber/green), a "What to study next" callout, and item-by-item review (`ItemReviewRow` component) defaulting to wrong-answers-only with a "Show correct answers too" toggle.
+- **Verified live in a headless browser**: took a partial exam, submitted, confirmed the per-domain bars render with correct percentages/labels, "What to study next" lists the weakest domains with real task-statement pointers, and the show-all toggle correctly reveals correct answers too. Zero console errors.
 
 ## Phase 4 — Dashboard
 - `GET /dashboard`: aggregate score trend, per-domain trend, weakest domain overall, streak/recent attempts.

@@ -4,7 +4,7 @@ import { db } from "../db/db.js";
 import { selectExamQuestions, shuffledOptionsForItem } from "../examSelection.js";
 import { questionFromRow } from "../types.js";
 import type { AttemptItemRow, AttemptRow, QuestionRow } from "../types.js";
-import { scaledScore, isPassing } from "../scoring.js";
+import { scaledScore, isPassing, accuracyLevel } from "../scoring.js";
 import { DOMAINS, DEFAULT_EXCLUDE_DAYS, EXAM_LENGTH } from "../domainWeights.js";
 
 const router = Router();
@@ -227,6 +227,33 @@ export function buildResultsView(attempt: AttemptRow) {
     };
   });
 
+  const rawBreakdown: Record<number, { correct: number; total: number }> = attempt.domain_breakdown
+    ? JSON.parse(attempt.domain_breakdown)
+    : {};
+
+  const domainBreakdown = DOMAINS.filter((d) => rawBreakdown[d.id]?.total > 0)
+    .map((d) => {
+      const { correct, total } = rawBreakdown[d.id];
+      const pct = correct / total;
+      return { domain: d.id, name: d.name, correct, total, pct, level: accuracyLevel(pct) };
+    })
+    .sort((a, b) => a.pct - b.pct);
+
+  // "What to study next": the 2-3 weakest domains, preferring weak (<60%) over
+  // borderline (60-80%), pulling the pointer text from the blueprint's task
+  // statements (server/domainWeights.ts) per CLAUDE.md.
+  const weak = domainBreakdown.filter((d) => d.level === "weak");
+  const borderline = domainBreakdown.filter((d) => d.level === "borderline");
+  const studyNext = [...weak, ...borderline].slice(0, 3).map((d) => {
+    const domain = DOMAINS.find((dm) => dm.id === d.domain)!;
+    return {
+      domain: d.domain,
+      name: d.name,
+      pct: d.pct,
+      pointer: domain.taskStatements.slice(0, 2).join("; "),
+    };
+  });
+
   return {
     id: attempt.id,
     startedAt: attempt.started_at,
@@ -235,7 +262,8 @@ export function buildResultsView(attempt: AttemptRow) {
     examLength: items.length,
     scaledScore: attempt.scaled_score,
     passed: !!attempt.passed,
-    domainBreakdown: attempt.domain_breakdown ? JSON.parse(attempt.domain_breakdown) : {},
+    domainBreakdown,
+    studyNext,
     review,
   };
 }
