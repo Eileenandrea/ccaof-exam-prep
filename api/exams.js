@@ -4,13 +4,12 @@ import { DOMAINS, DEFAULT_EXCLUDE_DAYS } from "../server/domainWeights.js";
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const supabase = createClient(
-  SUPABASE_URL ?? "",
-  SUPABASE_SERVICE_ROLE_KEY ?? "",
-  {
-    auth: { persistSession: false },
-  },
-);
+const supabase =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { persistSession: false },
+      })
+    : null;
 
 function shuffle(arr) {
   const a = [...arr];
@@ -22,6 +21,12 @@ function shuffle(arr) {
 }
 
 export default async function handler(req, res) {
+  if (!supabase) {
+    res.status(500).json({
+      error: "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set in this deployment's environment variables",
+    });
+    return;
+  }
   try {
     const excludeDays = Number(req.query.excludeDays ?? DEFAULT_EXCLUDE_DAYS);
     const cutoff = new Date(
