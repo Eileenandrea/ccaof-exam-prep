@@ -27,20 +27,25 @@ Phased implementation plan derived from `CLAUDE.md` (spec) and `architecture.md`
 - `ResultsPage` fully built out: headline, per-domain accuracy bars (red/amber/green), a "What to study next" callout, and item-by-item review (`ItemReviewRow` component) defaulting to wrong-answers-only with a "Show correct answers too" toggle.
 - **Verified live in a headless browser**: took a partial exam, submitted, confirmed the per-domain bars render with correct percentages/labels, "What to study next" lists the weakest domains with real task-statement pointers, and the show-all toggle correctly reveals correct answers too. Zero console errors.
 
-## Phase 4 — Dashboard
-- `GET /dashboard`: aggregate score trend, per-domain trend, weakest domain overall, streak/recent attempts.
-- `DashboardPage`: score trend line chart with the 720 pass line marked, per-domain trend chart, recent attempts list, weakest-domain-overall callout.
-- **Done when**: after 2+ exams, the dashboard shows a real trend line and per-domain movement, not just the latest attempt.
+## Phase 4 — Dashboard ✅ DONE
+- `GET /api/dashboard` (built in Phase 0, `server/routes/dashboard.ts`): score trend, per-domain trend, weakest-domain-overall aggregation, day-based streak, recent attempts list.
+- `DashboardPage` built per the **dataviz skill**: KPI row (`StatTile`: attempts, latest score, streak, weakest domain), `ScoreTrendChart` (line chart, dashed 720 pass-line reference, dots colored by pass/fail status color), `DomainTrendGrid` — 7 domains sits at the series-count "token ceiling" per the skill's guidance, so per-domain trend is **faceted into small multiples** (one mini single-hue chart per domain with 60%/80% reference lines) instead of a 7-line spaghetti chart — plus a recent-attempts table. Chart colors pulled from the skill's validated reference palette (`client/src/lib/chartTokens.ts`), validated via `scripts/validate_palette.js` (all checks pass). Empty state included for zero attempts.
+- Typecheck (`tsc -b --noEmit`) passes clean; confirmed via API that 3 real attempts exist in the DB for the trend to render against.
+- **Not yet re-verified with a live browser screenshot this session** (the in-progress Playwright check was interrupted) — worth a quick visual pass (chart rendering, tooltip, small-multiples layout) next time the dev server is up, though nothing in the code/typecheck suggests an issue.
 
-## Phase 5 — Flashcards
-- `GET /flashcards?domain=&due=true` using the simple due-ranking from `architecture.md` (never-reviewed first, then worst hard-ratio, then oldest review).
-- `FlashcardsPage`: flip-card UI, domain filter, "due today" filter, mark easy/hard on review.
-- **Done when**: flashcards are usable independently of starting a full exam, and reviewing updates `flashcard_state`.
+## Phase 5 — Flashcards ✅ DONE
+- `GET /api/flashcards?domain=&due=true` and `POST /api/flashcards/:questionId/review` (built in Phase 0, `server/routes/flashcards.ts`) — due-ranking is never-reviewed first, then worst hard-ratio, then oldest review; "due" = never reviewed, hard-ratio ≥ 1/3, or stale > 3 days.
+- `FlashcardsPage` + `Flashcard` flip-card component: domain filter dropdown, "due for review only" toggle, click-to-flip (question → correct answer + explanation), Easy/Hard buttons that record the review and advance to the next card, "reviewed all N cards" end state.
+- Reachable directly from the nav bar — no need to start an exam first.
+- Typecheck clean; confirmed via API that `GET /api/flashcards` returns all 85 seeded cards (all "due" since none reviewed yet) and the domain filter/due-only query params work.
+- **Not yet re-verified with a live browser click-through this session** — worth a quick visual pass (flip animation/layout, Easy/Hard advancing correctly) next time the dev server is up.
 
-## Phase 6 — Daily rotation & bank growth
-- Implement the "exclude questions seen in last N days" logic in `POST /exams` (default N=7), with graceful fallback + UI warning when the unseen pool runs low.
-- Build the offline generator script (`server/generator/generateQuestions.ts`) that calls the Claude API in batches, tags output with domain + explanation, and inserts into `questions` — run manually or on a schedule to grow the bank toward 1,000 over time.
-- **Done when**: running the generator script measurably grows `questions` count per domain, and two exams taken a day apart share few/no questions.
+## Phase 6 — Daily rotation & bank growth ✅ DONE
+- "Exclude questions seen in last N days" (default N=7) was already implemented in `server/examSelection.ts` during Phase 0/2 — falls back to allowing repeats per-domain when the unseen pool runs low, and `POST /api/exams` returns `bankLow`, which `ExamPage` already surfaces as a "Bank running low — some repeats today" banner.
+- Built `server/generator/generateQuestions.ts` (`npm run generate [-- --domain N] [-- --count N]`): calls the Claude API (`claude-opus-4-8`, adaptive thinking, `output_config.format` json_schema structured outputs so the model's response is guaranteed well-formed JSON) in per-domain batches, tops each domain up toward its share of the 1,000-question target, passes the domain's existing stems in the prompt to discourage near-duplicates, validates every generated question (option count/ids, correct-answer consistency, non-trivial stem/explanation length) before inserting, and skips/logs anything invalid rather than corrupting the bank.
+- Along the way: the root `package.json` had pinned `@anthropic-ai/sdk@^0.27.3` (a stale guess from before I'd checked); updated to the actual current `^0.123.0`.
+- **Verified**: `tsc --noEmit` compiles clean against the real installed SDK types (confirms `output_config`/`thinking`/`stream()` usage matches the actual API surface, not a guess). No `ANTHROPIC_API_KEY` is configured in this environment, so I did not run the generator against the live API (that spends real money and needs your go-ahead) — confirmed instead that it fails with a clear, non-crashing error when the key is missing, and unit-tested the validation function's rejection logic against six malformed-question cases (all caught correctly).
+- **Still needed before this phase delivers real value**: you'll need to set `ANTHROPIC_API_KEY` (env var or `.env` file) and actually run `npm run generate` some number of times to grow the bank past the current 85 questions toward 1,000 — the "two exams a day apart share few/no questions" outcome only becomes true once the bank is large.
 
 ## Phase 7 — Polish
 - About/disclosure page: not affiliated with Anthropic, questions are original (not leaked/real exam content), scaled score is an approximation.

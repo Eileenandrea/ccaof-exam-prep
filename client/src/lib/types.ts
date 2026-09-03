@@ -102,6 +102,18 @@ export interface DashboardData {
   recent: RecentAttempt[];
 }
 
+export interface FlashcardItem {
+  questionId: string;
+  domain: number;
+  stem: string;
+  explanation: string;
+  options: QuestionOption[];
+  correctOptionIds: string[];
+  lastReviewedAt: string | null;
+  timesReviewed: number;
+  timesMarkedHard: number;
+}
+
 export interface ResultsView {
   id: string;
   startedAt: string;

@@ -4,6 +4,7 @@ import HomePage from "./pages/HomePage";
 import ExamPage from "./pages/ExamPage";
 import ResultsPage from "./pages/ResultsPage";
 import DashboardPage from "./pages/DashboardPage";
+import FlashcardsPage from "./pages/FlashcardsPage";
 import PlaceholderPage from "./pages/PlaceholderPage";
 
 export default function App() {
@@ -31,12 +32,7 @@ export default function App() {
               <Route path="/exam/:id" element={<ExamPage />} />
               <Route path="/results/:id" element={<ResultsPage />} />
               <Route path="/dashboard" element={<DashboardPage />} />
-              <Route
-                path="/flashcards"
-                element={
-                  <PlaceholderPage title="Flashcards" note="Coming in Phase 5." />
-                }
-              />
+              <Route path="/flashcards" element={<FlashcardsPage />} />
               <Route
                 path="/about"
                 element={<PlaceholderPage title="About" note="Coming in Phase 7." />}

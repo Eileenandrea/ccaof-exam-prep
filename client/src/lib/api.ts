@@ -1,4 +1,4 @@
-import type { DashboardData, DomainInfo, ExamView, ResultsView } from "./types";
+import type { DashboardData, DomainInfo, ExamView, FlashcardItem, ResultsView } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -40,4 +40,18 @@ export const api = {
     request<ResultsView>(`/attempts/${attemptId}`),
 
   getDashboard: () => request<DashboardData>("/dashboard"),
+
+  getFlashcards: (params: { domain?: number; due?: boolean } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.domain) qs.set("domain", String(params.domain));
+    if (params.due) qs.set("due", "true");
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return request<FlashcardItem[]>(`/flashcards${suffix}`);
+  },
+
+  reviewFlashcard: (questionId: string, outcome: "easy" | "hard") =>
+    request<{ ok: true }>(`/flashcards/${questionId}/review`, {
+      method: "POST",
+      body: JSON.stringify({ outcome }),
+    }),
 };
