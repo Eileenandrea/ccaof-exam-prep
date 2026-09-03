@@ -3,6 +3,7 @@
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx server/db/seedSupabase.ts
 import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
+import ws from "ws";
 import { seedQuestions } from "./seedData.js";
 import { DOMAINS } from "../domainWeights.js";
 
@@ -16,6 +17,7 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
+  realtime: { transport: ws as unknown as WebSocket },
 });
 
 const { count, error: countError } = await supabase
