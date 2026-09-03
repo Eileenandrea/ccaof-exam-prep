@@ -13,6 +13,24 @@ import { db } from "../db/db.js";
 import { DOMAINS, QUESTION_BANK_TARGET } from "../domainWeights.js";
 import type { ItemType } from "../types.js";
 
+const LETTERS = ["a", "b", "c", "d"] as const;
+type Letter = (typeof LETTERS)[number];
+
+// The model returns options as a fixed object with exactly these 4 keys,
+// rather than a variable-length array. A first version used an array, which
+// let the model return 5+ options (and sometimes duplicate ids) despite
+// prompt instructions not to — structured outputs enforces required object
+// keys + additionalProperties:false, but does NOT enforce array length, so
+// the array form was never actually constrained. A fixed-shape object makes
+// "exactly 4, uniquely keyed" a schema guarantee instead of a prompt request.
+interface RawGeneratedQuestion {
+  itemType: ItemType;
+  stem: string;
+  options: Record<Letter, string>;
+  correctOptionIds: Letter[];
+  explanation: string;
+}
+
 interface GeneratedQuestion {
   itemType: ItemType;
   stem: string;
@@ -21,9 +39,16 @@ interface GeneratedQuestion {
   explanation: string;
 }
 
-// output_config.format doesn't support numerical constraints (minItems, etc.)
-// per the structured-outputs schema limitations, so item/option counts are
-// enforced by isValid() below rather than in the schema itself.
+function normalize(raw: RawGeneratedQuestion): GeneratedQuestion {
+  return {
+    itemType: raw.itemType,
+    stem: raw.stem,
+    options: LETTERS.map((letter) => ({ id: letter, text: raw.options?.[letter] ?? "" })),
+    correctOptionIds: raw.correctOptionIds ?? [],
+    explanation: raw.explanation,
+  };
+}
+
 const QUESTION_SCHEMA = {
   type: "object",
   properties: {
@@ -35,18 +60,22 @@ const QUESTION_SCHEMA = {
           itemType: { type: "string", enum: ["single", "multi"] },
           stem: { type: "string" },
           options: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                id: { type: "string" },
-                text: { type: "string" },
-              },
-              required: ["id", "text"],
-              additionalProperties: false,
+            type: "object",
+            description: "The four answer options, one per key.",
+            properties: {
+              a: { type: "string" },
+              b: { type: "string" },
+              c: { type: "string" },
+              d: { type: "string" },
             },
+            required: ["a", "b", "c", "d"],
+            additionalProperties: false,
           },
-          correctOptionIds: { type: "array", items: { type: "string" } },
+          correctOptionIds: {
+            type: "array",
+            description: "Which option key(s) are correct.",
+            items: { type: "string", enum: ["a", "b", "c", "d"] },
+          },
           explanation: { type: "string" },
         },
         required: ["itemType", "stem", "options", "correctOptionIds", "explanation"],
@@ -83,10 +112,9 @@ ${taskStatements.map((t) => `- ${t}`).join("\n")}
 
 Requirements:
 - Scenario-based: ground every question in a realistic workplace situation (marketing, ops, PM, education, communications, or general knowledge work). Avoid pure recall ("What is X?") — prefer "You are doing X, Claude does Y, what should you do?"
-- Mix item types: mostly "single" (4 options, exactly one correct), with roughly 1 in 5 as "multi" (4 options, exactly 2-3 correct) — set itemType and correctOptionIds accordingly.
+- Mix item types: mostly "single" (exactly one of the four options correct), with roughly 1 in 5 as "multi" (exactly 2-3 of the four options correct) — set itemType and correctOptionIds accordingly.
 - Distractors must be plausible: each wrong option should represent a common misconception, not an obviously silly choice.
 - Every question needs a clear, specific explanation of why the correct answer(s) are correct.
-- Option ids must be "a", "b", "c", "d" in that order.
 - Do not duplicate or closely rephrase any of these existing questions in this domain:
 ${existingStems.length > 0 ? existingStems.map((s) => `- ${s}`).join("\n") : "(none yet)"}`;
 }
@@ -127,21 +155,16 @@ async function generateForDomain(
     throw new Error(`No text content returned for domain ${domainId}`);
   }
 
-  const parsed = JSON.parse(textBlock.text) as { questions: GeneratedQuestion[] };
-  return parsed.questions ?? [];
+  const parsed = JSON.parse(textBlock.text) as { questions: RawGeneratedQuestion[] };
+  return (parsed.questions ?? []).map(normalize);
 }
 
 function isValid(q: GeneratedQuestion): string | null {
   if (q.itemType !== "single" && q.itemType !== "multi") return "invalid itemType";
   if (!q.stem || q.stem.trim().length < 20) return "stem too short";
-  if (!Array.isArray(q.options) || q.options.length !== 4) return "must have exactly 4 options";
-  const ids = q.options.map((o) => o.id);
-  if (new Set(ids).size !== 4) return "duplicate option ids";
   if (!q.options.every((o) => o.text && o.text.trim().length > 0)) return "empty option text";
   if (!Array.isArray(q.correctOptionIds) || q.correctOptionIds.length === 0)
     return "no correct answer given";
-  if (!q.correctOptionIds.every((id) => ids.includes(id)))
-    return "correctOptionIds reference an option that doesn't exist";
   if (q.itemType === "single" && q.correctOptionIds.length !== 1)
     return "single-select item must have exactly 1 correct answer";
   if (q.itemType === "multi" && q.correctOptionIds.length < 2)
@@ -206,6 +229,7 @@ async function main() {
         const reason = isValid(q);
         if (reason) {
           console.warn(`  Skipped invalid question: ${reason}`);
+          console.warn(`    itemType=${q.itemType}, options=${JSON.stringify(q.options).slice(0, 200)}`);
           totalSkipped++;
           continue;
         }

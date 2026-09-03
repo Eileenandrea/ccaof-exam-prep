@@ -131,7 +131,7 @@ export default function ExamPage() {
       )}
 
       {/* Question navigator grid */}
-      <div className="grid grid-cols-10 gap-1.5 mb-5">
+      <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-1.5 mb-5">
         {exam.questions.map((q, i) => {
           const answered = q.selectedOptionIds.length > 0;
           return (
@@ -212,7 +212,7 @@ export default function ExamPage() {
               questions are scored as incorrect.
             </p>
           )}
-          <div className="grid grid-cols-10 gap-1.5 mb-6">
+          <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-1.5 mb-6">
             {exam.questions.map((q, i) => {
               const answered = q.selectedOptionIds.length > 0;
               return (

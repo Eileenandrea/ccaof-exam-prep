@@ -46,11 +46,27 @@ Phased implementation plan derived from `CLAUDE.md` (spec) and `architecture.md`
 - Along the way: the root `package.json` had pinned `@anthropic-ai/sdk@^0.27.3` (a stale guess from before I'd checked); updated to the actual current `^0.123.0`.
 - **Verified**: `tsc --noEmit` compiles clean against the real installed SDK types (confirms `output_config`/`thinking`/`stream()` usage matches the actual API surface, not a guess). No `ANTHROPIC_API_KEY` is configured in this environment, so I did not run the generator against the live API (that spends real money and needs your go-ahead) — confirmed instead that it fails with a clear, non-crashing error when the key is missing, and unit-tested the validation function's rejection logic against six malformed-question cases (all caught correctly).
 - **Still needed before this phase delivers real value**: you'll need to set `ANTHROPIC_API_KEY` (env var or `.env` file) and actually run `npm run generate` some number of times to grow the bank past the current 85 questions toward 1,000 — the "two exams a day apart share few/no questions" outcome only becomes true once the bank is large.
+- **Bug found on first real run, fixed at the schema level (not just prompting)**: a 10-question batch for domain 1 came back with all 10 questions padded to 5 options, and some of those 5 had duplicate ids (e.g. two options both labeled `"d"`). First attempt was a post-hoc `repairOptionCount()` that trimmed to 4 and preserved correct answers — but it assumed original ids were unique, so on the real duplicate-id data it collapsed two different options onto the same final letter and produced *new* duplicate-id errors (a bug in the fix itself). Root-caused and replaced: the generator's `options` schema changed from a variable-length array of `{id, text}` (array length isn't enforceable by structured outputs, confirmed as the actual mechanism of failure) to a **fixed object with four required keys `a`/`b`/`c`/`d`** (`additionalProperties: false`) — this is a JSON-schema shape structured outputs *does* enforce, so "exactly 4, uniquely keyed" became a guarantee instead of a prompt request. `correctOptionIds` items are now schema-`enum`-constrained to `["a","b","c","d"]` too. The now-unnecessary repair function and the array-shape validation checks were deleted rather than left as dead code. Verified offline (no API cost): the raw→app-format conversion (`normalize()`) always yields exactly 4 uniquely-ordered options. Diagnostic logging on any remaining skip is still in place.
 
-## Phase 7 — Polish
-- About/disclosure page: not affiliated with Anthropic, questions are original (not leaked/real exam content), scaled score is an approximation.
-- Empty/loading states, mobile-friendly layout for the exam and dashboard views.
-- Basic error handling around the generator script (LLM call failures shouldn't corrupt the bank — validate shape before insert).
+## Phase 7 — Polish ✅ DONE
+- Real `AboutPage` with the three required disclosures (not affiliated with Anthropic, no real/leaked exam content, scaled score is a labeled approximation with the formula shown) plus notes on bank growth and local-only data storage. Deleted the now-unused `PlaceholderPage.tsx`.
+- Added a persistent footer disclosure line (with a link to About) across every page via the `App.tsx` layout, per CLAUDE.md's "footer/about screen" requirement.
+- Empty/loading states were already present on Dashboard ("No attempts yet"), Flashcards ("No flashcards match this filter", "reviewed all N cards"), Exam, and Results — verified during this pass rather than rebuilt.
+- Fixed a real mobile-usability bug: `ExamPage`'s question-navigator grid was hardcoded to `grid-cols-10`, which is unusable at phone width. Changed to `grid-cols-5 sm:grid-cols-8 md:grid-cols-10`. Nav bar changed to `flex-wrap` so it doesn't overflow on narrow screens.
+- Generator error handling (Phase 6) reviewed and confirmed sufficient: per-domain try/catch around the API call + JSON parse, per-question shape validation before insert, and a per-domain DB transaction — a bad batch is skipped/logged, never partially written.
+- **Verified live in a headless browser at both desktop (1280px) and mobile (390px, iPhone-sized) viewports**: home, exam (question grid + card layout), dashboard (KPI row, charts, table), flashcards, and about all render correctly with zero console errors at both widths.
+
+## Full end-to-end verification ✅ DONE
+Ran one continuous Playwright pass through the real user journey (25 assertions, not just "did it render"):
+- Started a full 60-question exam, answered 58 of 60 (2 left deliberately unanswered), flagged 2 questions, jumped around via the nav grid (not just Next/Previous).
+- Review-and-submit summary correctly reported "58 of 60 answered" and the 2-unanswered warning.
+- Submitted; landed on results with a real raw score, scaled score, pass/fail, per-domain accuracy bars, and item review; the "show correct answers too" toggle correctly revealed passing items.
+- Cross-checked the submitted attempt via `GET /api/attempts/:id` directly: `examLength` = 60, `domainBreakdown` covers all 7 domains, and the per-domain totals sum to exactly 60 — the scoring math is internally consistent, not just "looks right" in the UI.
+- Took a **4th real attempt** this session, which finally exercised the dashboard's multi-attempt trend rendering for the first time (previous phases only had 1-3 attempts in the DB): score trend line now shows real movement across 4 points, and all 7 per-domain small-multiples show multi-point trends, not just single dots.
+- Flashcards: switched the domain filter, flipped a card, marked it Easy, confirmed it advanced to the next card, and confirmed via `GET /api/flashcards` that `timesReviewed` was actually persisted server-side (not just a client-side UI change).
+- About page: confirmed all three required disclosures are present in the rendered text.
+- Re-ran the mid-exam-refresh resume check as a regression test (still passes after all later changes).
+- **Result: 25/25 checks passed, zero console errors, across the entire flow.**
 
 ## Explicitly deferred (per CLAUDE.md "out of scope")
 - Multi-user accounts, cloud sync, payments — not planned.
