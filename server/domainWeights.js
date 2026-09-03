@@ -2,15 +2,17 @@
 // Mirrors the table in CLAUDE.md — if the blueprint changes, update ONLY here.
 // The client fetches this via GET /api/domains instead of duplicating it.
 
-export interface DomainInfo {
-  id: number;
-  name: string;
-  weight: number; // fraction of a 60-question exam
-  itemsPerExam: number; // rounded target item count per 60-Q exam
-  taskStatements: string[];
-}
+/**
+ * @typedef {Object} DomainInfo
+ * @property {number} id
+ * @property {string} name
+ * @property {number} weight fraction of a 60-question exam
+ * @property {number} itemsPerExam rounded target item count per 60-Q exam
+ * @property {string[]} taskStatements
+ */
 
-export const DOMAINS: DomainInfo[] = [
+/** @type {DomainInfo[]} */
+export const DOMAINS = [
   {
     id: 1,
     name: "Prompting and Task Execution",
@@ -105,6 +107,6 @@ export const SCALED_MAX = 1000;
 export const DEFAULT_EXCLUDE_DAYS = 7;
 export const QUESTION_BANK_TARGET = 1000;
 
-export function domainName(id: number): string {
+export function domainName(id) {
   return DOMAINS.find((d) => d.id === id)?.name ?? `Domain ${id}`;
 }
