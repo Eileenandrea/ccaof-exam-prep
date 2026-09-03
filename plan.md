@@ -2,16 +2,17 @@
 
 Phased implementation plan derived from `CLAUDE.md` (spec) and `architecture.md` (technical design). Work top to bottom — each phase should leave the app in a runnable state, not just a partial mess.
 
-## Phase 0 — Project setup
-- Scaffold Vite + React + Tailwind frontend, thin Express server, `better-sqlite3` DB.
-- Create the SQLite schema from `architecture.md` (`questions`, `attempts`, `attempt_items`, `flashcard_state`) with a migration script.
-- Add `domainWeights.ts` with the 7-domain blueprint table — this becomes the single source of truth in code, referenced everywhere else.
-- **Done when**: server boots, DB file is created with empty tables, frontend renders a placeholder page hitting one health-check API route.
+## Phase 0 — Project setup ✅ DONE
+- Scaffolded Vite + React + Tailwind (v4) frontend in `client/`, thin Express server + `better-sqlite3` DB in `server/`.
+- SQLite schema (`questions`, `attempts`, `attempt_items`, `flashcard_state`) created via `server/db/migrate.ts` (auto-runs on server boot too).
+- `server/domainWeights.ts` holds the 7-domain blueprint table as the single source of truth in code; exposed to the client via `GET /api/domains` rather than duplicated in the frontend.
+- Root `package.json` scripts: `npm run dev` (concurrently runs server+client), `npm run server`, `npm run migrate`, `npm run seed`, `npm run generate`.
+- Verified: server boots on :4000, migration creates empty tables, `GET /api/health` responds.
 
-## Phase 1 — Seed question bank (small, hand-authored)
-- Hand-author or generate ~70–100 questions across all 7 domains (roughly matching blueprint proportions) so there's enough to run one full 60-question exam without repeats.
-- Insert via a seed script, each with domain tag, item type, options, correct answer(s), explanation — nothing enters the bank without an explanation, per CLAUDE.md.
-- **Done when**: `GET /questions/stats` shows a non-trivial count in every domain.
+## Phase 1 — Seed question bank (small, hand-authored) ✅ DONE
+- Hand-authored 85 original scenario-based questions across all 7 domains in `server/db/seedData.ts`, matching blueprint proportions (D1:12, D2:18, D3:10, D4:14, D5:10, D6:13, D7:8), mixed single/multi-select weighted toward single-select.
+- Inserted via `server/db/seed.ts` (`npm run seed`) — every question has domain tag, item type, options, correct answer(s), and explanation.
+- Verified: `GET /api/questions/stats` shows 85 total with non-trivial counts in every domain (8-18 each), correctly reporting `pctOfTarget` against the 1,000-question long-term target.
 
 ## Phase 2 — Exam flow (core loop)
 - `POST /exams`: domain-weighted selection of 60 questions, shuffle order/options, create attempt + attempt_items.
