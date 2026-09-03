@@ -24,7 +24,7 @@ const { count, error: countError } = await supabase
   .from("questions")
   .select("id", { count: "exact", head: true });
 if (countError) {
-  console.error("Could not read the questions table:", countError.message);
+  console.error("Could not read the questions table:", JSON.stringify(countError, null, 2));
   process.exit(1);
 }
 if (count && count > 0) {
@@ -43,7 +43,7 @@ const rows = seedQuestions.map((q) => ({
 
 const { error: insertError } = await supabase.from("questions").insert(rows);
 if (insertError) {
-  console.error("Insert failed:", insertError.message);
+  console.error("Insert failed:", JSON.stringify(insertError, null, 2));
   process.exit(1);
 }
 
